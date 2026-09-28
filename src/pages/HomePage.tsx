@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef, type ChangeEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useFileStore, useSettingsStore } from '@/stores';
-import { Button } from '@/components/ui';
+import { Button, Spinner } from '@/components/ui';
 import { FileDropZone } from '@/components/file';
 import { formatSize } from '@/lib/utils/format';
 import { getRizinVersion } from '@/lib/utils/version';
@@ -17,7 +17,7 @@ import {
   listContextsForHash,
   type RzwebContext,
 } from '@/lib/rizin';
-import { Github, Moon, Sun, Terminal, Cpu, Lock, Code2, FolderOpen, Trash2 } from 'lucide-react';
+import { Github, Moon, Sun, Terminal, Cpu, Lock, Code2, FolderOpen, Trash2, Download, AlertTriangle } from 'lucide-react';
 import { useTheme } from '@/providers';
 
 interface PendingLaunch {
@@ -30,6 +30,7 @@ interface PendingLaunch {
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { setCurrentFile, recentFiles } = useFileStore();
   const { cacheVersions, setCacheVersions, analysisDepth } = useSettingsStore();
   const { setTheme, resolvedTheme } = useTheme();
@@ -40,6 +41,8 @@ export default function HomePage() {
   const [rizinVersion, setRizinVersion] = useState('...');
   const [contexts, setContexts] = useState<RzwebContext[]>([]);
   const [pendingLaunch, setPendingLaunch] = useState<PendingLaunch | null>(null);
+  const [isUrlLoading, setIsUrlLoading] = useState(false);
+  const [urlLoadError, setUrlLoadError] = useState<string | null>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
 
   const refreshLibrary = useCallback(() => {
@@ -136,24 +139,25 @@ export default function HomePage() {
     }
   }, [analysisDepth, launchContext]);
 
-  const handleOpenRizin = useCallback(async () => {
-    if (!file) return;
-
+  const openBinaryData = useCallback(async (name: string, data: Uint8Array, size: number, autoResume = false) => {
     setIsProcessing(true);
     try {
-      const data = new Uint8Array(await file.arrayBuffer());
       const hash = await computeFileHash(data);
       const existing = await listContextsForHash(hash);
       if (existing.length > 0) {
-        setPendingLaunch({ name: file.name, data, size: file.size, hash, existing });
+        if (autoResume) {
+          await resumeContext(existing[0], data);
+          return;
+        }
+        setPendingLaunch({ name, data, size, hash, existing });
         return;
       }
-      const ctx = await createContext({ name: file.name, data, analysisDepth });
+      const ctx = await createContext({ name, data, analysisDepth });
       launchContext({
         id: ctx.id,
         name: ctx.name,
         data,
-        size: file.size,
+        size,
         artifactHash: ctx.artifactHash,
       });
     } catch {
@@ -161,7 +165,72 @@ export default function HomePage() {
     } finally {
       setIsProcessing(false);
     }
-  }, [analysisDepth, file, launchContext]);
+  }, [analysisDepth, launchContext, resumeContext]);
+
+  const handleOpenRizin = useCallback(async () => {
+    if (!file) return;
+    const data = new Uint8Array(await file.arrayBuffer());
+    await openBinaryData(file.name, data, file.size);
+  }, [file, openBinaryData]);
+
+  useEffect(() => {
+    const fileUrl = searchParams.get('file');
+    if (!fileUrl) return;
+
+    let cancelled = false;
+    const loadFromUrl = async () => {
+      setIsUrlLoading(true);
+      setUrlLoadError(null);
+      try {
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const blob = await response.blob();
+        if (cancelled) return;
+
+        const fileName = (() => {
+          try {
+            const url = new URL(fileUrl);
+            const last = url.pathname.split('/').filter(Boolean).pop();
+            return last ? decodeURIComponent(last) : 'remote-binary';
+          } catch {
+            return 'remote-binary';
+          }
+        })();
+
+        const remoteFile = new File([blob], fileName, {
+          type: 'application/octet-stream',
+        });
+
+        const maxSize = 100 * 1024 * 1024;
+        if (remoteFile.size > maxSize) {
+          throw new Error(`File too large (${formatSize(remoteFile.size)}). Maximum is ${formatSize(maxSize)}.`);
+        }
+        if (remoteFile.size === 0) {
+          throw new Error('Downloaded file is empty.');
+        }
+
+        setFile(remoteFile);
+        setPendingLaunch(null);
+        const data = new Uint8Array(await remoteFile.arrayBuffer());
+        await openBinaryData(remoteFile.name, data, remoteFile.size, true);
+      } catch (err) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : 'Failed to download the file.';
+        setUrlLoadError(message);
+        toast.error(`URL load failed: ${message}`);
+        setSearchParams({}, { replace: true });
+      } finally {
+        if (!cancelled) setIsUrlLoading(false);
+      }
+    };
+
+    void loadFromUrl();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleResumeLatest = useCallback(() => {
     if (!pendingLaunch) return;
@@ -254,6 +323,34 @@ export default function HomePage() {
           </div>
 
           <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
+            {isUrlLoading && (
+              <div className="mb-4 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
+                <Spinner size="md" />
+                <div>
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                    <Download className="h-4 w-4" />
+                    Downloading binary from URL
+                  </p>
+                  <p className="mt-0.5 text-xs font-mono text-muted-foreground">
+                    Fetching and loading remote file for analysis…
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {urlLoadError && !isUrlLoading && (
+              <div className="mb-4 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                <div>
+                  <p className="text-sm font-medium text-destructive">URL load failed</p>
+                  <p className="mt-0.5 break-all text-xs font-mono text-muted-foreground">{urlLoadError}</p>
+                  <p className="mt-1 text-[10px] font-mono text-muted-foreground">
+                    Ensure the server allows cross-origin requests (CORS) and the URL is reachable.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <FileDropZone
               onFileSelect={handleFileSelect}
               selectedFile={file}
