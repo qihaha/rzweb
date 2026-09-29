@@ -5,6 +5,10 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
 
+  // Use relative base so the built app can be hosted from any subpath
+  // and opened directly as a static file without resource path errors.
+  base: './',
+
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

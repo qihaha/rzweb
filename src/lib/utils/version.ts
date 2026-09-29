@@ -16,7 +16,7 @@ async function fetchVersion(): Promise<string> {
   }
   
   try {
-    const response = await fetch('/VERSION');
+    const response = await fetch(`${import.meta.env.BASE_URL}VERSION`);
     if (response.ok) {
       const version = cleanVersionText(await response.text());
       if (version) {

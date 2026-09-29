@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import { RouterProvider, createBrowserRouter } from 'react-router-dom';
+import { RouterProvider, createHashRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from 'react-error-boundary';
 
@@ -20,7 +20,7 @@ const queryClient = new QueryClient({
   },
 });
 
-const router = createBrowserRouter([
+const router = createHashRouter([
   {
     path: '/',
     element: <HomePage />,
