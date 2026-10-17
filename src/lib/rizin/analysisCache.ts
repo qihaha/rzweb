@@ -1,4 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
+import { digestSha256Hex } from '@/lib/utils';
 
 const DB_NAME = 'rzweb-analysis-cache';
 const DB_VERSION = 2;
@@ -103,10 +104,7 @@ async function attachBinary(db: IDBPDatabase, entry: StoredAnalysis): Promise<Ca
 }
 
 export async function computeFileHash(data: Uint8Array): Promise<string> {
-  const buf = new Uint8Array(data).buffer as ArrayBuffer;
-  const hashBuffer = await crypto.subtle.digest('SHA-256', buf);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return digestSha256Hex(data);
 }
 
 function isClearlyIncomplete(entry: StoredAnalysis): boolean {

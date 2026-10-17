@@ -1,4 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
+import { randomId } from '@/lib/utils';
 import {
   getCachedAnalysisEntry,
   listCachedAnalyses,
@@ -69,7 +70,7 @@ async function migrateLegacyCache(): Promise<void> {
         data: cached.binaryData,
         analysisDepth: cached.analysisDepth,
         rzdb: cached.projectData,
-        id: crypto.randomUUID(),
+        id: randomId(),
       });
     }
   } catch {
@@ -104,7 +105,7 @@ export async function createContext(params: {
 }): Promise<RzwebContext> {
   const artifact = await putArtifact(params.name, params.data);
   const now = Date.now();
-  const id = params.id ?? crypto.randomUUID();
+  const id = params.id ?? randomId();
   const context: StoredContext = {
     id,
     name: params.name,
@@ -173,7 +174,7 @@ export async function commitRevision(
   if (!ctx) return null;
 
   const revision: ContextRevision = {
-    id: crypto.randomUUID(),
+    id: randomId(),
     contextId,
     parentId: ctx.currentRevisionId,
     reason,

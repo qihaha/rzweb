@@ -1,4 +1,5 @@
 import type { RizinModule } from './RizinLoader';
+import { randomId } from '@/lib/utils';
 import {
   computeFileHash,
   getCachedAnalysis,
@@ -2445,7 +2446,7 @@ export class RizinSession {
     if (this.currentJob?.status === 'analyzing') return this.currentJob;
     const contextId = this.runtimeConfig.contextId ?? 'anonymous';
     this.analysisCancelRequested = false;
-    const jobId = crypto.randomUUID();
+    const jobId = randomId();
     const stages =
       this.runtimeConfig.analysisDepth >= 3
         ? ['aa', 'aaaa']

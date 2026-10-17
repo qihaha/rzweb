@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { randomId } from '@/lib/utils';
 
 export interface SavedScript {
   id: string;
@@ -50,7 +51,7 @@ export const useScriptStore = create<ScriptState>()(
         const trimmed = name.trim() || 'Untitled';
         const existing = get().scripts.find((s) => s.name === trimmed);
         const script: SavedScript = {
-          id: existing?.id ?? crypto.randomUUID(),
+          id: existing?.id ?? randomId(),
           name: trimmed,
           content,
           updatedAt: Date.now(),
